@@ -1,66 +1,56 @@
-# Physics-Informed Machine Learning
+# PINN vs Baseline NN - Phase 1
 
-This project focuses on integrating domain knowledge, primarily from physics and Partial Differential Equations (PDEs), with machine learning algorithms to enhance environmental sensing and field reconstruction.
+Compares Physics-Informed Neural Networks against standard NNs using **Kaggle damped harmonic oscillator dataset**.
 
-## Overview
-
-The `physics_ml` module explores the intersection of physics-based modeling and machine learning, with a particular emphasis on:
-
-- **Physics-Informed Neural Networks (PINNs)**: Neural networks that incorporate physical laws and constraints directly into the learning process
-- **PDE-Based Modeling**: Leveraging partial differential equations to model spatio-temporal phenomena
-- **Domain Knowledge Integration**: Combining physical principles with data-driven approaches for improved accuracy and generalization
-- **Machine Learning Algorithms**: Introduction and implementation of various ML techniques tailored for physics-informed applications
-
-## Key Concepts
-
-### Physics-Informed Approaches
-- Incorporation of physical laws (conservation laws, boundary conditions, etc.) as soft constraints in neural networks
-- PDE-constrained optimization
-- Hybrid models that combine physics-based and data-driven components
-
-### Machine Learning Algorithms
-- Neural networks with physics-informed loss functions
-- Deep learning architectures for spatio-temporal data
-- Transfer learning from physics-based models
-- Uncertainty quantification in physics-informed models
-
-## Applications
-
-This module is particularly relevant for:
-- Environmental field sensing and reconstruction
-- Spatio-temporal evolution modeling
-- Multi-sensor data fusion with physical constraints
-- Weather and climate modeling
-- Fluid dynamics and transport phenomena
-
-## Structure
-
-```
-physics_ml/
-├── main.py          # Main entry point
-└── README.md        # This file
-```
-
-## Getting Started
-
-To use this module:
+## Quick Start
 
 ```bash
 cd projects/physics_ml
-python main.py
+pip install -r requirements.txt
+python -m src.main
 ```
 
-## Dependencies
+## Results (Kaggle Data)
 
-The module relies on:
-- Deep learning frameworks (PyTorch/TensorFlow)
-- Scientific computing libraries (NumPy, SciPy)
-- PDE solvers and physics modeling tools
-- Visualization libraries for results
+### Data Efficiency
 
-## References
+Numbers below are from the default run (`python -m src.main`, seed=42).
 
-- Physics-Informed Neural Networks (PINNs) literature
-- PDE-constrained optimization
-- Domain-informed machine learning
+| Data | Points | Baseline RMSE | PINN RMSE | Winner |
+|------|--------|--------------:|----------:|--------|
+| 100% | 200 | 0.0692 | 0.0724 | Baseline +5% |
+| 50% | 100 | 0.2673 | 0.1146 | **PINN +57%** |
+| 30% | 60 | 0.1506 | 0.1031 | **PINN +31%** |
+| 20% | 40 | 0.2423 | 0.1070 | **PINN +56%** |
+| 10% | 20 | 0.1699 | 0.1033 | **PINN +39%** |
+| 5% | 10 | 0.1619 | 0.0989 | **PINN +39%** |
 
+**Crossover (seed=42): between 100% and 50% data** — PINN wins below this threshold.
+
+## Key Findings
+
+| Prediction | Result | ✓/✗ |
+|------------|--------|-----|
+| PINN wins with sparse data | PINN wins at 50% and below (seed=42) | ✓ |
+| Baseline wins with abundant data | Baseline wins at 100% (seed=42) | ✓ |
+
+## Physics
+
+Damped harmonic oscillator: `x'' + 2ζωₙx' + ωₙ²x = 0`
+
+- Physics parameters auto-estimated from data: ζ=0.0675, ω_n=1.0443
+- **PINN Loss**: `λ_data·MSE(data) + λ_physics·MSE(ODE_residual) + λ_ic·MSE(IC)` (IC optional)
+
+## Dataset
+
+[Kaggle - Damped Harmonic Oscillator](https://www.kaggle.com/datasets/cici118/damped-harmonic-oscillator)
+
+## Project Structure
+
+```
+src/
+├── main.py     # python -m src.main
+├── models.py   # BaselineNN + PINN
+├── data.py     # Kaggle data loading
+└── train.py    # Training loops
+```
