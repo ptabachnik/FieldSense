@@ -5,8 +5,8 @@ Physics: x'' + 2ζω_n x' + ω_n² x = 0
 """
 import torch
 import torch.nn as nn
-
-
+ 
+ 
 class BaselineNN(nn.Module):
     """Standard feedforward NN. No physics - learns purely from data."""
      
@@ -83,7 +83,7 @@ class PINNLoss:
     
     def __call__(self, model, t_data, x_data, t_physics, t_ic=None, x_ic=None, **kwargs):
         # Data loss
-        loss_data = self.mse(model(t_data), x_data)
+        loss_data = self.mse(model(t_data), x_data) 
         
         # Physics loss: ODE residual should be zero
         x, x_t, x_tt = model.derivatives(t_physics)

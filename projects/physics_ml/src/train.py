@@ -16,13 +16,13 @@ def train_model(model, loss_fn, data, n_epochs=5000, lr=1e-3, verbose=True):
     
     iterator = tqdm(range(n_epochs), disable=not verbose, desc="Training")
     for epoch in iterator:
-        optimizer.zero_grad()
+        optimizer.zero_grad() # reset gradients each epoch
         loss, loss_dict = loss_fn(
             model, data['t_train'], data['x_train'],
             t_physics=data.get('t_collocation'),
             t_ic=data.get('t_ic'), x_ic=data.get('x_ic'))
-        loss.backward()
-        optimizer.step()
+        loss.backward() # compute gradients
+        optimizer.step() # update weights
         
         if verbose and epoch % 500 == 0:
             iterator.set_postfix(loss=f"{loss_dict['total']:.2e}")
@@ -33,17 +33,16 @@ def train_model(model, loss_fn, data, n_epochs=5000, lr=1e-3, verbose=True):
 
 def evaluate_model(model, data):
     """Evaluate model and return metrics."""
-    model.eval()
-    with torch.no_grad():
+    model.eval() # set model to evaluation mode (not relevant))
+    with torch.no_grad(): #disable gradient computation
         pred = model(data['t_test'])
         true = data['x_test']
         mse = torch.mean((pred - true)**2).item()
-        
     return {
         'mse': mse,
         'rmse': np.sqrt(mse),
         'mae': torch.mean(torch.abs(pred - true)).item(),
-        'predictions': model(data['t_full']).detach().cpu().numpy().flatten()}
+        'predictions': model(data['t_full']).detach().cpu().numpy().flatten()} 
 
 
 def train_and_evaluate(model_type, data, zeta, omega_n, n_epochs=5000, lr=1e-3,
