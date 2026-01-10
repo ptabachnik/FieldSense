@@ -91,14 +91,14 @@ def prepare_kaggle_datasets(scenario='extrapolation', n_collocation=200, device=
         't_test': to_tensor(t_test),
         'x_test': to_tensor(x_test),
         't_collocation': to_tensor(np.linspace(t_min, t_max, n_collocation)),
-        't_ic': torch.tensor([[t_train.min()]], dtype=torch.float32, device=device),
+        't_ic': torch.tensor([[t_train.min()]],  dtype=torch.float32, device=device),
         'x_ic': torch.tensor([[x_train[0]]], dtype=torch.float32, device=device),
         't_full': to_tensor(np.concatenate([t_train, t_test])),
         'x_full': to_tensor(np.concatenate([x_train, x_test])),
         'zeta': zeta,
         'omega_n': omega_n}
 
-
+ 
 def subsample_training_data(data, fraction, seed=42):
     """Subsample training data to test data efficiency."""
     np.random.seed(seed)
@@ -109,4 +109,48 @@ def subsample_training_data(data, fraction, seed=42):
     new_data = data.copy()
     new_data['t_train'] = data['t_train'][idx]
     new_data['x_train'] = data['x_train'][idx]
+    return new_data
+
+
+def add_gaussian_noise(data, noise_std, seed=42):
+    """
+    Add white Gaussian noise to training data.
+    
+    Parameters
+    ----------
+    data : dict
+        Dataset dict with 't_train', 'x_train', etc.
+    noise_std : float
+        Standard deviation of Gaussian noise (relative to data std).
+        E.g., noise_std=0.1 means noise σ = 0.1 × data_std
+    seed : int
+        Random seed for reproducibility
+        
+    Returns
+    -------
+    new_data : dict
+        Copy of data with noise added to x_train only.
+        Test data remains clean (we evaluate on true values).
+    """
+    if noise_std <= 0:
+        return data
+    
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    
+    new_data = data.copy()
+    x_train = data['x_train']
+    
+    # Scale noise relative to data standard deviation
+    data_std = x_train.std().item()
+    absolute_noise_std = noise_std * data_std
+    
+    # Add Gaussian noise
+    noise = torch.randn_like(x_train) * absolute_noise_std
+    new_data['x_train'] = x_train + noise
+    
+    # Store noise info for reference
+    new_data['noise_std'] = noise_std
+    new_data['noise_std_absolute'] = absolute_noise_std
+    
     return new_data

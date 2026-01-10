@@ -7,10 +7,18 @@ Run: python3 -m src.main
 import torch
 import numpy as np
 from pathlib import Path
+from datetime import datetime
+from tqdm import tqdm
 
-from .data import prepare_kaggle_datasets, subsample_training_data
+from .data import prepare_kaggle_datasets, subsample_training_data, add_gaussian_noise
 from .train import train_and_evaluate
- 
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+NOISE_STD = 0.0  # Gaussian noise level (relative to data std). 0 = no noise, 0.1 = 10%, etc.
+# ============================================================================
+
 torch.manual_seed(42)
 np.random.seed(42)
 
@@ -28,6 +36,7 @@ def save_run_plot(
     out_path: Path,
     *,
     title: str,
+    subtitle: str,
     data_full: dict,
     data_train: dict,
     model_baseline: torch.nn.Module,
@@ -66,7 +75,8 @@ def save_run_plot(
 
     ax.set_title(
         f"{title}\n"
-        f"Estimated physics: ζ={zeta:.4f}, ωₙ={omega_n:.4f} | λ_physics={lambda_physics}"
+        f"{subtitle}\n"
+        f"Physics: ζ={zeta:.4f}, ωₙ={omega_n:.4f} | λ_physics={lambda_physics}"
     )
     ax.set_xlabel("time")
     ax.set_ylabel("displacement")
@@ -84,12 +94,19 @@ def main():
     print("  x'' + 2ζωₙx' + ωₙ²x = 0")
     print("="*65)
     
-    Path("outputs").mkdir(exist_ok=True)
+    # Create output folder (timestamp in filenames prevents overwrites)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     plots_dir = Path("outputs") / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
+    print(f"\nOutput folder: {plots_dir}")
+    print(f"Run timestamp: {timestamp}")
+    
+    # Noise configuration
+    noise_str = f"noise={int(NOISE_STD*100)}%" if NOISE_STD > 0 else "no_noise"
+    print(f"Noise level: {noise_str}")
     
     # Load Kaggle data
-    print("\nLoading Kaggle dataset...")
+    print("Loading Kaggle dataset...")
     data_full = prepare_kaggle_datasets(scenario='extrapolation')
     
     zeta = data_full['zeta']
@@ -105,16 +122,20 @@ def main():
     print(f"{'Data':<10} {'Points':<8} {'Baseline':<12} {'PINN':<12} {'Winner':<12}")
     print("-"*65)
     
-    results = []
-    for name, frac, epochs, lam in [
+    scenarios = [
         ("100%", 1.0, 5000, 0.1),
         ("50%", 0.5, 6000, 0.3),
         ("30%", 0.3, 8000, 0.5),
         ("20%", 0.2, 10000, 0.5),
         ("10%", 0.1, 15000, 0.5),
         ("5%", 0.05, 20000, 0.5),
-    ]:
+    ]
+    
+    results = []
+    for name, frac, epochs, lam in tqdm(scenarios, desc="Training scenarios", leave=False):
         data = subsample_training_data(data_full, frac)
+        # Add noise to training data (test data stays clean)
+        data = add_gaussian_noise(data, NOISE_STD, seed=42)
         n = len(data['t_train'])
         
         model_b, _, m_b = train_and_evaluate('baseline', data, zeta, omega_n, n_epochs=epochs, verbose=False)
@@ -123,12 +144,14 @@ def main():
         imp = (m_b['rmse'] - m_p['rmse']) / m_b['rmse'] * 100
         winner = f"PINN +{imp:.0f}%" if imp > 0 else f"Base +{-imp:.0f}%"
         results.append((frac, m_b['rmse'], m_p['rmse'], imp))
-        print(f"{name:<10} {n:<8} {m_b['rmse']:<12.4f} {m_p['rmse']:<12.4f} {winner:<12}")
+        tqdm.write(f"{name:<10} {n:<8} {m_b['rmse']:<12.4f} {m_p['rmse']:<12.4f} {winner:<12}")
 
-        out_path = plots_dir / f"pinn_vs_baseline_{int(frac*100):03d}pct.png"
+        # Descriptive filename includes noise level
+        out_path = plots_dir / f"data_efficiency_{int(frac*100):03d}pct_{n}pts_{noise_str}_{timestamp}.png"
         save_run_plot(
             out_path,
-            title=f"PINN vs Baseline ({name} train, seed=42, epochs={epochs})",
+            title=f"Data Efficiency Test: {name} of training data ({n} points)",
+            subtitle=f"Training epochs: {epochs} | {noise_str} | seed=42",
             data_full=data_full,
             data_train=data,
             model_baseline=model_b,
@@ -163,37 +186,43 @@ def main():
         f"test t ∈ [{t_test_min:.1f}, {t_test_max:.1f}]"
     )
     
-    # Full training
-    model_b_full, _, m_b_full = train_and_evaluate('baseline', data_full, zeta, omega_n, n_epochs=5000, verbose=False)
-    model_p_full, _, m_p_full = train_and_evaluate('pinn', data_full, zeta, omega_n, n_epochs=5000, lambda_physics=0.1, verbose=False)
+    # Full training with progress indication
+    print("Training full models...")
+    # Add noise to full training data
+    data_full_noisy = add_gaussian_noise(data_full, NOISE_STD, seed=42)
+    model_b_full, _, m_b_full = train_and_evaluate('baseline', data_full_noisy, zeta, omega_n, n_epochs=5000, verbose=True)
+    model_p_full, _, m_p_full = train_and_evaluate('pinn', data_full_noisy, zeta, omega_n, n_epochs=5000, lambda_physics=0.1, verbose=True)
     
     print(f"Baseline test RMSE: {m_b_full['rmse']:.4f}")
     print(f"PINN test RMSE:     {m_p_full['rmse']:.4f}")
     imp_extrap = (m_b_full['rmse'] - m_p_full['rmse']) / m_b_full['rmse'] * 100
     print(f"→ {'PINN' if imp_extrap > 0 else 'Baseline'} improvement: {abs(imp_extrap):.0f}%")
 
-    out_path = plots_dir / "pinn_vs_baseline_full_100pct.png"
+    # Descriptive filename for extrapolation test
+    out_path = plots_dir / f"extrapolation_full_data_{len(data_full['t_train'])}pts_{noise_str}_{timestamp}.png"
     save_run_plot(
         out_path,
-        title="PINN vs Baseline (100% train, seed=42, epochs=5000)",
+        title=f"Extrapolation Test: Full training data ({len(data_full['t_train'])} points)",
+        subtitle=f"Train t∈[{t_train_min:.0f},{t_train_max:.0f}], Test t∈[{t_test_min:.0f},{t_test_max:.0f}] | {noise_str} | epochs=5000",
         data_full=data_full,
-        data_train=data_full,
+        data_train=data_full_noisy,
         model_baseline=model_b_full,
         model_pinn=model_p_full,
         rmse_baseline=m_b_full["rmse"],
         rmse_pinn=m_p_full["rmse"],
         zeta=zeta,
         omega_n=omega_n,
-        lambda_physics=0.1,)
+        lambda_physics=0.1)
     print(f"Saved plots to: {plots_dir}")
     
     print("\n" + "="*65)
     print("  SUMMARY (Kaggle Data)")
     print("="*65)
-    print("""
+    print(f"""
   Dataset: Kaggle damped-harmonic-oscillator
-  Physics estimated from data: ζ={:.4f}, ω_n={:.4f}
-  """.format(zeta, omega_n))
+  Physics estimated from data: ζ={zeta:.4f}, ω_n={omega_n:.4f}
+  Noise level: {noise_str}
+  """)
     print("✓ Done!\n")
 
 
