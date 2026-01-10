@@ -51,7 +51,7 @@ Thumbs.db
 
 # Results (uncomment if you don't want to track)
 # results/
-# outputs/
+outputs/
 
 # Logs
 *.log
