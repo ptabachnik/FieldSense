@@ -89,8 +89,8 @@ def save_run_plot(
         f"{subtitle}\n"
         f"Physics: ζ={zeta:.4f}, ωₙ={omega_n:.4f} | λ_physics={lambda_physics}"
     )
-    ax.set_xlabel("time")
-    ax.set_ylabel("displacement")
+    ax.set_xlabel("time (ms)")
+    ax.set_ylabel("displacement (mm)")
     ax.grid(True, alpha=0.25)
     ax.legend(loc="upper right")
 

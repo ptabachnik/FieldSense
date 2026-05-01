@@ -48,6 +48,7 @@ Thumbs.db
 # Data folders (uncomment if needed)
 # data/
 # datasets/
+projects/physics_ml/data/
 
 # Results (uncomment if you don't want to track)
 # results/
