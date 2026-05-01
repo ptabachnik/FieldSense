@@ -32,6 +32,25 @@ class RainMLP(nn.Module):
         return self.output(self.net(features))
 
 
+class WetDryMLP(nn.Module):
+    """Small MLP classifier for wet/dry detection from CML features."""
+
+    def __init__(self, input_dim: int, hidden_dims: list[int] | None = None):
+        super().__init__()
+        hidden_dims = hidden_dims or [32, 32]
+        layers: list[nn.Module] = []
+        in_dim = input_dim
+        for hidden_dim in hidden_dims:
+            layers.extend([nn.Linear(in_dim, hidden_dim), nn.ReLU()])
+            in_dim = hidden_dim
+        layers.append(nn.Linear(in_dim, 1))
+        self.net = nn.Sequential(*layers)
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        """Return wet/dry logits."""
+        return self.net(features)
+
+
 class PhysicsGuidedResidualMLP(nn.Module):
     """
     Physics-guided rain model.

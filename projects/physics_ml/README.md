@@ -206,6 +206,36 @@ not improve RMSE. This is an important negative result and suggests the next
 PINN iteration needs a better physics term or architecture, not just a larger
 physics loss.
 
+### Phase 3E Wet/Dry Classification
+
+The regression models also report wet/dry metrics by thresholding predicted rain
+rate, but the project deliverables call out wet/dry classification explicitly.
+Run a dedicated classifier on the same spatial feature sets:
+
+```bash
+python -m src.rain_wetdry \
+  --input outputs/phase2_spatial_validation/prepared_with_splits.csv \
+  --max-links-per-target 2 \
+  --epochs 1000 \
+  --threshold-strategy fixed \
+  --output-dir outputs/phase3e_wetdry
+```
+
+Current Phase 3E artifacts:
+
+- Report: `outputs/phase3e_wetdry/wetdry_report.md`
+- Metrics: `outputs/phase3e_wetdry/wetdry_metrics.csv`
+- Predictions: `outputs/phase3e_wetdry/wetdry_predictions.csv`
+- Plot: `outputs/phase3e_wetdry/wetdry_metric_bars.png`
+
+Current Phase 3E result:
+
+- Best classifier: `spatial_physics_classifier`
+- Wet/dry F1: `0.720`
+- Improvement over one-link classifier F1: `13.1%`
+- This supports the documented classification-improvement goal, with the caveat
+  that the test split remains rain-sparse.
+
 ### Phase 3C Spatial Modeling
 
 The single-row Phase 3 models treat each CML link independently. To test whether
@@ -296,6 +326,7 @@ Generated artifacts:
   - `outputs/presentation/model_progress_rmse.png`
   - `outputs/presentation/improvement_by_stage.png`
   - `outputs/presentation/spatial_metric_comparison.png`
+  - `outputs/presentation/wetdry_metric_comparison.png`
 
 There is also a Cursor Canvas dashboard named `fieldsense-results.canvas.tsx`
 that summarizes the key results visually inside Cursor.
@@ -353,6 +384,7 @@ src/
 ├── rain_train.py    # Phase 3 data tensors, metrics, training
 ├── rain_main.py     # Phase 3 benchmark entry point
 ├── rain_robustness.py # Phase 3 sparse/noisy-data robustness sweep
+├── rain_wetdry.py   # Phase 3E wet/dry classification
 ├── rain_spatial.py  # Phase 3C spatial multi-link comparison
 ├── rain_spatial_sweep.py # Phase 3D spatial hyperparameter/data sweep
 └── rain_presentation.py # Presentation-ready summary tables and figures
