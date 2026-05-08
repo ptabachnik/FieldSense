@@ -206,6 +206,41 @@ not improve RMSE. This is an important negative result and suggests the next
 PINN iteration needs a better physics term or architecture, not just a larger
 physics loss.
 
+### Spatial Robustness (Data Efficiency)
+
+The rigid-loss PINN robustness test above only tested the single-link PINN.
+The spatial+physics configuration that succeeded in Phase 3D was never tested
+under sparse data. A dedicated spatial robustness experiment fills this gap:
+
+```bash
+python -m src.phase3.rain_spatial_robustness \
+  --train-fractions 1.0,0.5,0.3,0.2,0.1 \
+  --seeds 42,7,123 \
+  --epochs 500 \
+  --max-links-per-target 2 \
+  --rain-weight-alpha 2.0 \
+  --output-dir outputs/phase3_spatial_robustness
+```
+
+Current spatial robustness artifacts:
+
+- Report: `outputs/phase3_spatial_robustness/spatial_robustness_report.md`
+- Metrics: `outputs/phase3_spatial_robustness/spatial_robustness_metrics.csv`
+- Plots: `outputs/phase3_spatial_robustness/rmse_vs_train_fraction.png`,
+  `outputs/phase3_spatial_robustness/improvement_vs_fraction.png`
+
+Current spatial robustness result: **spatial+physics beats single-link in 5/5
+data fractions** (averaged across 3 seeds), with 4/5 reaching the 10%
+improvement target. Best average improvement: `16.2%` at 30% training data.
+The spatial+physics model degrades more gracefully than the single-link model
+as training data is reduced, directly supporting the Metric 2 data-efficiency
+claim using the spatial architecture rather than the rigid PINN loss.
+
+With 10% label noise (`--target-noise-std 0.1`), spatial+physics still wins in
+5/5 fractions (best `9.7%`), though improvements are smaller. At 20% noise the
+advantage washes out, indicating the spatial benefit is most reliable for
+data-sparse rather than noise-heavy scenarios.
+
 ### Phase 3E Wet/Dry Classification
 
 The regression models also report wet/dry metrics by thresholding predicted rain
