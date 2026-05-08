@@ -13,7 +13,7 @@ import torch
 from torch.optim import Adam
 
 from .rain_models import RainMLP, power_law_rain_rate
-from .rain_schema import validate_model_ready_table
+from ..phase2.rain_schema import validate_model_ready_table
 
 
 FEATURE_COLUMNS = [

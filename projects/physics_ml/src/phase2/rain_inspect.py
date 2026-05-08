@@ -3,7 +3,7 @@
 Inspect OpenMRG Sweden data readiness for Phase 2.
 
 Run from projects/physics_ml:
-    python -m src.rain_inspect
+    python -m src.phase2.rain_inspect
 
 The default command is read-only: it reports available files, gauges, nearest
 CML links, and whether cml.nc is present. Use --build-table after cml.nc exists
@@ -12,7 +12,7 @@ to verify the one-gauge/one-link aligned table.
 
 from __future__ import annotations
 
-import argparse
+import argparse 
 from pathlib import Path
 
 from .rain_data import (

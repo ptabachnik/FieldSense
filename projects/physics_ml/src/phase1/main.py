@@ -3,10 +3,10 @@
 PINN vs Baseline NN - Kaggle Damped Harmonic Oscillator Dataset
 
 Usage:
-    python3 -m src.main                    # Full run, no noise
-    python3 -m src.main --noise 0.2        # Full run, 20% noise
-    python3 -m src.main --quick            # Quick test (10x fewer epochs)
-    python3 -m src.main --noise 0.2 --quick
+    python3 -m src.phase1.main                    # Full run, no noise
+    python3 -m src.phase1.main --noise 0.2        # Full run, 20% noise
+    python3 -m src.phase1.main --quick            # Quick test (10x fewer epochs)
+    python3 -m src.phase1.main --noise 0.2 --quick
 """
 import argparse
 import torch

@@ -42,7 +42,7 @@ deactivate
 ```bash
 cd projects/physics_ml
 source .venv/bin/activate
-python -m src.main
+python -m src.phase1.main
 ```
 
 ## Phase 2 Data Prep
@@ -52,7 +52,7 @@ Start with data inspection before adding rainfall models:
 ```bash
 cd projects/physics_ml
 source .venv/bin/activate
-python -m src.rain_inspect
+python -m src.phase2.rain_inspect
 ```
 
 The default inspection reports OpenMRG file availability, available city gauges,
@@ -63,14 +63,14 @@ missing, restore/download it before building the aligned table.
 Once `cml.nc` exists, prepare the canonical table that Phase 3 models will read:
 
 ```bash
-python -m src.rain_prepare --dataset openmrg --gauge Chalm
+python -m src.phase2.rain_prepare --dataset openmrg --gauge Chalm
 ```
 
 If the repo-local OpenMRG copy is missing `cml.nc`, use PyNNcml's OpenMRG
 loader instead:
 
 ```bash
-python -m src.rain_prepare \
+python -m src.phase2.rain_prepare \
   --dataset pynncml_openmrg \
   --time-start 2015-06-01 \
   --time-end 2015-06-08 \
@@ -91,7 +91,7 @@ same modeling code.
 Validate the prepared table and create chronological splits before modeling:
 
 ```bash
-python -m src.rain_validate \
+python -m src.phase2.rain_validate \
   --input outputs/prepared/pynncml_openmrg_phase2.csv \
   --output-dir outputs/phase2_validation \
   --train-frac 0.7 \
@@ -133,7 +133,7 @@ Run the first rain-estimation benchmark from the validated Phase 2 split table:
 ```bash
 cd projects/physics_ml
 source .venv/bin/activate
-python -m src.rain_main \
+python -m src.phase3.rain_main \
   --input outputs/phase2_validation/prepared_with_splits.csv \
   --power-b 0.8 \
   --epochs 1000 \
@@ -180,7 +180,7 @@ MAE, MSE, bias, and wet/dry classification metrics.
 To mirror the Phase 1 sparse/noisy-data tests on real CML/gauge data, run:
 
 ```bash
-python -m src.rain_robustness \
+python -m src.phase3.rain_robustness \
   --input outputs/phase2_validation/prepared_with_splits.csv \
   --train-fractions 1.0,0.5,0.3,0.2,0.1 \
   --seeds 42,7,123 \
@@ -213,7 +213,7 @@ rate, but the project deliverables call out wet/dry classification explicitly.
 Run a dedicated classifier on the same spatial feature sets:
 
 ```bash
-python -m src.rain_wetdry \
+python -m src.phase3.rain_wetdry \
   --input outputs/phase2_spatial_validation/prepared_with_splits.csv \
   --max-links-per-target 2 \
   --epochs 1000 \
@@ -243,7 +243,7 @@ spatial CML context helps, prepare a richer table and build gauge-level samples
 with multiple nearby CML links:
 
 ```bash
-python -m src.rain_prepare \
+python -m src.phase2.rain_prepare \
   --dataset pynncml_openmrg \
   --time-start 2015-06-01 \
   --time-end 2015-06-08 \
@@ -251,13 +251,13 @@ python -m src.rain_prepare \
   --baseline-train-frac 0.7 \
   --output outputs/prepared/pynncml_openmrg_spatial.csv
 
-python -m src.rain_validate \
+python -m src.phase2.rain_validate \
   --input outputs/prepared/pynncml_openmrg_spatial.csv \
   --output-dir outputs/phase2_spatial_validation \
   --train-frac 0.7 \
   --val-frac 0.15
 
-python -m src.rain_spatial \
+python -m src.phase3.rain_spatial \
   --input outputs/phase2_spatial_validation/prepared_with_splits.csv \
   --max-links-per-target 2 \
   --epochs 1000 \
@@ -285,7 +285,7 @@ baseline trained with the same seed, learning rate, architecture, and
 rain-weighted loss:
 
 ```bash
-python -m src.rain_spatial_sweep \
+python -m src.phase3.rain_spatial_sweep \
   --input outputs/phase2_spatial_validation/prepared_with_splits.csv \
   --max-attempts 100 \
   --epochs 500 \
@@ -314,7 +314,7 @@ Current Phase 3D result:
 Build slide-ready summary figures and tables from the existing Phase 2/3 outputs:
 
 ```bash
-python -m src.rain_presentation --output-dir outputs/presentation
+python -m src.phase3.rain_presentation --output-dir outputs/presentation
 ```
 
 Generated artifacts:
@@ -335,7 +335,7 @@ that summarizes the key results visually inside Cursor.
 
 ### Data Efficiency
 
-Numbers below are from the default run (`python -m src.main`, seed=42).
+Numbers below are from the default run (`python -m src.phase1.main`, seed=42).
 
 | Data | Points | Baseline RMSE | PINN RMSE | Winner |
 |------|--------|--------------:|----------:|--------|
@@ -370,22 +370,26 @@ Damped harmonic oscillator: `x'' + 2ζωₙx' + ωₙ²x = 0`
 
 ```
 src/
-├── main.py          # Phase 1 oscillator entry point
-├── models.py        # Phase 1 oscillator BaselineNN + PINN
-├── data.py          # Phase 1 Kaggle oscillator data loading
-├── train.py         # Phase 1 oscillator training loops
-├── rain_data.py     # Phase 2 OpenMRG data loading/cleaning/alignment
-├── rain_inspect.py  # Phase 2 data inspection entry point
-├── rain_pynncml.py  # Phase 2 PyNNcml OpenMRG adapter
-├── rain_prepare.py  # Phase 2 generic prepare CLI
-├── rain_schema.py   # Phase 2 canonical table schema for modeling
-├── rain_validate.py # Phase 2 data validation, splits, and plots
-├── rain_models.py   # Phase 3 rain MLP and power-law losses
-├── rain_train.py    # Phase 3 data tensors, metrics, training
-├── rain_main.py     # Phase 3 benchmark entry point
-├── rain_robustness.py # Phase 3 sparse/noisy-data robustness sweep
-├── rain_wetdry.py   # Phase 3E wet/dry classification
-├── rain_spatial.py  # Phase 3C spatial multi-link comparison
-├── rain_spatial_sweep.py # Phase 3D spatial hyperparameter/data sweep
-└── rain_presentation.py # Presentation-ready summary tables and figures
+├── phase1/
+│   ├── main.py      # oscillator entry point
+│   ├── models.py    # oscillator BaselineNN + PINN
+│   ├── data.py      # Kaggle oscillator data loading
+│   └── train.py     # oscillator training loops
+├── phase2/
+│   ├── rain_data.py     # OpenMRG data loading/cleaning/alignment
+│   ├── rain_inspect.py  # data inspection entry point
+│   ├── rain_pynncml.py  # PyNNcml OpenMRG adapter
+│   ├── rain_prepare.py  # generic prepare CLI
+│   ├── rain_schema.py   # canonical table schema
+│   └── rain_validate.py # validation, splits, and plots
+├── phase3/
+│   ├── rain_models.py   # rain MLP and power-law losses
+│   ├── rain_train.py    # data tensors, metrics, training
+│   ├── rain_main.py     # benchmark entry point
+│   ├── rain_robustness.py # sparse/noisy-data robustness sweep
+│   ├── rain_wetdry.py   # wet/dry classification
+│   ├── rain_spatial.py  # spatial multi-link comparison
+│   ├── rain_spatial_sweep.py # spatial hyperparameter/data sweep
+│   └── rain_presentation.py # presentation-ready summary tables and figures
+└── __init__.py
 ```
