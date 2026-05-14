@@ -137,7 +137,7 @@ def prepare_rain_dataset(path: Path, device: str = "cpu") -> RainDataset:
     train_mask = table["split"] == "train"
     feature_mean = feature_frame.loc[train_mask].mean()
     feature_std = feature_frame.loc[train_mask].std().replace(0.0, 1.0).fillna(1.0)
-    standardized = (feature_frame - feature_mean) / feature_std
+    standardized = (feature_frame - feature_mean) / feature_std #z-score normalization
 
     def make_split(split_name: str) -> RainSplit:
         mask = table["split"] == split_name

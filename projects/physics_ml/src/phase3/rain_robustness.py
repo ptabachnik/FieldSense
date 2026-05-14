@@ -265,7 +265,7 @@ def main() -> None:
 
             pinn_metrics = _train_and_eval_nn(
                 "pinn",
-                scenario_dataset,
+                scenario_dataset, 
                 input_dim,
                 RainPINNLoss(power_a, args.power_b, lambda_physics=args.lambda_physics),
                 args.epochs,

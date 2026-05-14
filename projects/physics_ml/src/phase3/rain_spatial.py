@@ -190,7 +190,7 @@ def prepare_spatial_dataset(
     train_std = features.loc[train_mask].std().replace(0.0, 1.0).fillna(1.0)
     standardized = (features - train_mean) / train_std
     standardized = standardized.fillna(0.0)
-
+ 
     def make_split(split: str) -> SpatialSplit:
         mask = wide["split"] == split
         frame = wide.loc[mask, ["time_utc", "target_name", "target_rain_mm_h", "split"]].copy().reset_index(drop=True)
