@@ -12,11 +12,12 @@ import argparse
 from pathlib import Path
 
 from .rain_data import build_stage1_table, describe_stage1_table
+from .rain_openrainer import build_openrainer_table
 from .rain_pynncml import build_pynncml_openmrg_table
 from .rain_schema import validate_model_ready_table, write_prepared_table
 
 
-SUPPORTED_DATASETS = ("openmrg", "openmrg_sweden", "pynncml_openmrg")
+SUPPORTED_DATASETS = ("openmrg", "openmrg_sweden", "pynncml_openmrg", "openrainer")
 
 
 def parse_args() -> argparse.Namespace:
@@ -138,6 +139,16 @@ def main() -> None:
             link2gauge_distance_m=args.link_distance_m,
             rain_gauge_time_base_s=args.rain_gauge_time_base_s,
             window_size_in_min=args.window_size_min,
+            baseline_train_fraction=args.baseline_train_frac,
+        )
+    elif args.dataset == "openrainer":
+        table = build_openrainer_table(
+            data_root=args.data_root,
+            gauge_name=args.gauge,
+            max_links=args.max_links,
+            link2gauge_distance_m=args.link_distance_m,
+            time_start=args.time_start,
+            time_end=args.time_end,
             baseline_train_fraction=args.baseline_train_frac,
         )
     else:

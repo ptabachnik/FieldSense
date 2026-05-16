@@ -183,6 +183,13 @@ def rain_metrics(
     rmse = float(np.sqrt(mse))
     wet_true = true > wet_threshold_mm_h
     wet_pred = pred > wet_threshold_mm_h
+    wet_true_count = int(wet_true.sum())
+    dry_true_count = int((~wet_true).sum())
+    wet_pred_count = int(wet_pred.sum())
+    rain_range = float(np.max(true) - np.min(true)) if len(true) else float("nan")
+    wet_mean = float(np.mean(true[wet_true])) if wet_true.any() else float("nan")
+    nrmse_range = rmse / rain_range if rain_range > 1e-8 else float("nan")
+    nrmse_wet_mean = rmse / wet_mean if wet_mean > 1e-8 else float("nan")
     rainy_rmse = float(np.sqrt(np.mean((pred[wet_true] - true[wet_true]) ** 2))) if wet_true.any() else float("nan")
     rainy_mae = float(np.mean(np.abs(pred[wet_true] - true[wet_true]))) if wet_true.any() else float("nan")
     dry_mae = float(np.mean(np.abs(pred[~wet_true] - true[~wet_true]))) if (~wet_true).any() else float("nan")
@@ -197,6 +204,9 @@ def rain_metrics(
     return {
         "mse": mse,
         "rmse": rmse,
+        "nrmse": nrmse_range,
+        "nrmse_range": nrmse_range,
+        "nrmse_wet_mean": nrmse_wet_mean,
         "mae": mae,
         "rainy_rmse": rainy_rmse,
         "rainy_mae": rainy_mae,
@@ -206,6 +216,14 @@ def rain_metrics(
         "wet_recall": float(recall),
         "wet_f1": float(f1),
         "wet_accuracy": float(accuracy),
+        "n_samples": int(len(true)),
+        "wet_true_count": wet_true_count,
+        "dry_true_count": dry_true_count,
+        "wet_pred_count": wet_pred_count,
+        "tp": tp,
+        "fp": fp,
+        "fn": fn,
+        "tn": tn,
     }
 
 

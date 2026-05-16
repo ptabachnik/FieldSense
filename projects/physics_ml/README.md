@@ -1,10 +1,12 @@
-# PINN vs Baseline NN
+# FieldSense Physics-Integrated Rain Modeling
 
 Phase 1 compares Physics-Informed Neural Networks against standard NNs using the
 **Kaggle damped harmonic oscillator dataset**.
 
-Phase 2 prepares OpenMRG Sweden CML and rain gauge data before rainfall NN/PINN
-modeling.
+Phase 2 prepares OpenMRG Sweden CML and rain gauge data before rainfall
+modeling. PyNNcml is used for dataset loading/alignment when available; the
+Phase 3 rain models are feed-forward MLPs over tabular and spatial CML-derived
+features, not PyNNcml RNN/LSTM extensions.
 
 ## Current Headline Result
 
@@ -124,7 +126,7 @@ Validated data summary:
   rainy-only claims should rely more on the richer spatial validation table.
 
 After this point, Phase 3 can consume `prepared_with_splits.csv` for pure
-physics, pure NN, and PINN experiments.
+physics, pure NN, direct physics-loss, and physics-feature experiments.
 
 ## Phase 3 Rain Modeling
 
@@ -144,7 +146,7 @@ This compares:
 
 - pure physics power-law baseline
 - pure data-driven MLP
-- PINN-style MLP with power-law attenuation residual
+- direct physics-loss MLP with a power-law attenuation residual
 - physics-feature NN, which uses the power-law rain estimate as a soft feature
 - physics-guided residual model, which learns corrections around the power-law prior
 
@@ -157,13 +159,13 @@ Current Phase 3A/3B artifacts:
   `outputs/phase3b/test_prediction_scatter.png`, `outputs/phase3b/test_metric_bars.png`
 
 Phase 3A uses the power-law relation as a direct physics-loss term:
-`A ≈ a * L * R^b`. This simple PINN is useful as a baseline, but the real CML
-rainfall setting is less ideal than the oscillator task. The power-law relation
-captures first-order microwave attenuation physics, but in real CML/gauge data
-it is insufficient as a standalone constraint because the CML observes
-path-averaged attenuation while gauges provide point measurements, and wet
-antenna, baseline drift, hardware noise, and spatial rain variability violate
-the idealized assumptions.
+`A ≈ a * L * R^b`. This loss-only physics model is useful as a baseline, but
+the real CML rainfall setting is less ideal than the oscillator task. The
+power-law relation captures first-order microwave attenuation physics, but in
+real CML/gauge data it is insufficient as a standalone constraint because the
+CML observes path-averaged attenuation while gauges provide point measurements,
+and wet antenna, baseline drift, hardware noise, and spatial rain variability
+violate the idealized assumptions.
 
 Phase 3B therefore uses power law as a soft prior/feature. The current best test
 RMSE comes from `physics_feature_nn`, which adds the power-law rain estimate as
@@ -199,18 +201,19 @@ Current robustness artifact:
 - Metrics: `outputs/phase3_robustness/robustness_metrics.csv`
 - Plot: `outputs/phase3_robustness/test_rmse_vs_train_fraction.png`
 
-Current robustness result: the simple PINN does **not** beat the pure NN under
-these sparse/noisy settings. A separate lower-weight run
+Current robustness result: the simple direct physics-loss model does **not**
+beat the pure NN under these sparse/noisy settings. A separate lower-weight run
 (`outputs/phase3_robustness_lambda001`) nearly matches the NN, but still does
 not improve RMSE. This is an important negative result and suggests the next
-PINN iteration needs a better physics term or architecture, not just a larger
-physics loss.
+physics-integrated iteration needs a better physics term or architecture, not
+just a larger physics loss.
 
 ### Spatial Robustness (Data Efficiency)
 
-The rigid-loss PINN robustness test above only tested the single-link PINN.
-The spatial+physics configuration that succeeded in Phase 3D was never tested
-under sparse data. A dedicated spatial robustness experiment fills this gap:
+The rigid direct-loss robustness test above only tested the single-link
+physics-loss model. The spatial+physics configuration that succeeded in Phase
+3D was never tested under sparse data. A dedicated spatial robustness experiment
+fills this gap:
 
 ```bash
 python -m src.phase3.rain_spatial_robustness \
@@ -234,12 +237,13 @@ data fractions** (averaged across 3 seeds), with 4/5 reaching the 10%
 improvement target. Best average improvement: `16.2%` at 30% training data.
 The spatial+physics model degrades more gracefully than the single-link model
 as training data is reduced, directly supporting the Metric 2 data-efficiency
-claim using the spatial architecture rather than the rigid PINN loss.
+claim using the spatial architecture rather than the rigid direct physics loss.
 
 With 10% label noise (`--target-noise-std 0.1`), spatial+physics still wins in
-5/5 fractions (best `9.7%`), though improvements are smaller. At 20% noise the
-advantage washes out, indicating the spatial benefit is most reliable for
-data-sparse rather than noise-heavy scenarios.
+5/5 fractions (best current artifact: about `11.3%`), though only part of the
+curve exceeds the 10% target. At 20% noise the advantage washes out, indicating
+the spatial benefit is most reliable for data-sparse rather than noise-heavy
+scenarios.
 
 ### Phase 3E Wet/Dry Classification
 
@@ -343,6 +347,8 @@ Current Phase 3D result:
   at the target for the lowest-RMSE result. It supports the claim that spatial
   CML context plus physics-derived features can improve over a one-link baseline,
   while remaining sensitive to split rain balance and hyperparameter selection.
+- This should be reported as a spatial MLP / physics-feature result. It is not
+  evidence that a PyNNcml RNN/LSTM model was extended with a PINN loss.
 
 ## Presentation Artifacts
 
@@ -414,6 +420,7 @@ src/
 │   ├── rain_data.py     # OpenMRG data loading/cleaning/alignment
 │   ├── rain_inspect.py  # data inspection entry point
 │   ├── rain_pynncml.py  # PyNNcml OpenMRG adapter
+│   ├── rain_openrainer.py # OpenRainER Italy adapter
 │   ├── rain_prepare.py  # generic prepare CLI
 │   ├── rain_schema.py   # canonical table schema
 │   └── rain_validate.py # validation, splits, and plots

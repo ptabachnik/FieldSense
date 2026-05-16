@@ -169,7 +169,7 @@ def _plot_metric_bars(metrics: pd.DataFrame, output_path: Path) -> None:
 
 def _print_test_summary(metrics: pd.DataFrame) -> None:
     test = metrics[metrics["split"] == "test"].copy()
-    cols = ["model", "rmse", "mae", "mse", "wet_f1", "wet_accuracy"]
+    cols = ["model", "rmse", "nrmse", "mae", "mse", "wet_f1", "wet_true_count", "wet_accuracy"]
     print("\nTest metrics")
     print("-" * 72)
     print(test[cols].sort_values("rmse").to_string(index=False, float_format=lambda x: f"{x:.4f}"))
@@ -201,10 +201,35 @@ def _write_report(
     best_pinn_name: str,
 ) -> None:
     selected = metrics[(metrics["split"] == "test") & metrics["selected_for_report"]].copy()
-    selected = selected[["model", "rmse", "rainy_rmse", "mae", "mse", "wet_f1", "wet_accuracy"]].sort_values("rmse")
+    selected = selected[
+        [
+            "model",
+            "rmse",
+            "nrmse",
+            "rainy_rmse",
+            "mae",
+            "mse",
+            "wet_f1",
+            "wet_true_count",
+            "wet_pred_count",
+            "wet_accuracy",
+        ]
+    ].sort_values("rmse")
     selected_all_splits = metrics[metrics["selected_for_report"]].copy()
     selected_all_splits = selected_all_splits[
-        ["model", "split", "rmse", "rainy_rmse", "mae", "mse", "bias", "wet_f1", "wet_accuracy"]
+        [
+            "model",
+            "split",
+            "rmse",
+            "nrmse",
+            "rainy_rmse",
+            "mae",
+            "mse",
+            "bias",
+            "wet_f1",
+            "wet_true_count",
+            "wet_accuracy",
+        ]
     ].sort_values(["model", "split"])
     best_test_model = selected.iloc[0]["model"]
     best_test_rmse = selected.iloc[0]["rmse"]

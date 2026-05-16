@@ -4,7 +4,9 @@ Phase 3D spatial hyperparameter/data sweep.
 
 Runs up to N spatial configurations and keeps the best result. Each attempt
 trains a spatial model and a matched one-link baseline so improvement is
-measured fairly under the same seed, optimizer, and loss weighting.
+measured fairly under the same seed, optimizer, and loss weighting. Candidate
+selection is based on validation metrics; the test split is reported once for
+the selected configuration.
 """
 
 from __future__ import annotations
@@ -73,21 +75,21 @@ def candidate_configs(max_attempts: int) -> list[dict[str, object]]:
     return configs[:max_attempts]
 
 
-def test_metric_row(metrics: list[dict[str, float | str]]) -> dict[str, float | str]:
-    rows = [row for row in metrics if row["split"] == "test"]
+def metric_row(metrics: list[dict[str, float | str]], split: str) -> dict[str, float | str]:
+    rows = [row for row in metrics if row["split"] == split]
     if len(rows) != 1:
-        raise ValueError("Expected exactly one test metric row")
+        raise ValueError(f"Expected exactly one {split} metric row")
     return rows[0]
 
 
 def plot_best_attempts(results: pd.DataFrame, output_path: Path) -> None:
-    best = results.sort_values("improvement_pct", ascending=False).head(15).copy()
+    best = results.sort_values("val_improvement_pct", ascending=False).head(15).copy()
     fig, ax = plt.subplots(figsize=(10, 5))
     labels = [f"#{int(row.attempt)} K={int(row.max_links)} {row.mode}" for row in best.itertuples()]
-    ax.bar(labels, best["improvement_pct"])
+    ax.bar(labels, best["val_improvement_pct"])
     ax.axhline(10.0, color="red", linestyle="--", linewidth=1, label="10% target")
-    ax.set_ylabel("RMSE improvement vs matched one-link NN (%)")
-    ax.set_title("Best Spatial Sweep Attempts")
+    ax.set_ylabel("Validation RMSE improvement vs matched one-link NN (%)")
+    ax.set_title("Best Validation-Selected Spatial Sweep Attempts")
     ax.tick_params(axis="x", rotation=60)
     ax.grid(True, axis="y", alpha=0.25)
     ax.legend()
@@ -97,11 +99,12 @@ def plot_best_attempts(results: pd.DataFrame, output_path: Path) -> None:
 
 
 def write_report(output_path: Path, results: pd.DataFrame, args: argparse.Namespace) -> None:
-    best_rmse = results.sort_values(["spatial_rmse", "rainy_rmse"], ascending=True).iloc[0]
-    best_improvement_row = results.sort_values("improvement_pct", ascending=False).iloc[0]
-    best_improvement = float(best_improvement_row["improvement_pct"])
-    reached_target = best_improvement >= 10.0
-    top = results.sort_values("improvement_pct", ascending=False).head(15)[
+    selected = results.sort_values("val_improvement_pct", ascending=False).iloc[0]
+    exploratory_best_test = results.sort_values("test_improvement_pct", ascending=False).iloc[0]
+    best_test_rmse = results.sort_values(["spatial_test_rmse", "test_rainy_rmse"], ascending=True).iloc[0]
+    selected_test_improvement = float(selected["test_improvement_pct"])
+    reached_target = selected_test_improvement >= 10.0
+    top = results.sort_values("val_improvement_pct", ascending=False).head(15)[
         [
             "attempt",
             "mode",
@@ -110,18 +113,22 @@ def write_report(output_path: Path, results: pd.DataFrame, args: argparse.Namesp
             "lr",
             "hidden_dims",
             "rain_weight_alpha",
-            "single_rmse",
-            "spatial_rmse",
-            "rainy_rmse",
-            "wet_f1",
-            "improvement_pct",
+            "single_val_rmse",
+            "spatial_val_rmse",
+            "val_improvement_pct",
+            "single_test_rmse",
+            "spatial_test_rmse",
+            "test_improvement_pct",
+            "test_nrmse",
+            "test_wet_f1",
+            "test_wet_true_count",
         ]
     ]
 
     conclusion = (
-        f"The sweep reached the 10% target with best improvement {best_improvement:.3g}%."
+        f"The validation-selected configuration reached the 10% target on test with {selected_test_improvement:.3g}% improvement."
         if reached_target
-        else f"The sweep did not reach the 10% target; best improvement was {best_improvement:.3g}%."
+        else f"The validation-selected configuration did not reach the 10% target on test; final test improvement was {selected_test_improvement:.3g}%."
     )
     lines = [
         "# Phase 3D Spatial Sweep Report",
@@ -129,43 +136,53 @@ def write_report(output_path: Path, results: pd.DataFrame, args: argparse.Namesp
         f"Input: `{args.input}`",
         f"Attempts run: `{len(results)}`",
         f"Epochs per model: `{args.epochs}`",
-        f"Selection metric: best RMSE improvement against a matched one-link NN; absolute RMSE is also reported.",
+        "Selection metric: best validation RMSE improvement against a matched one-link NN.",
+        "Final test metrics are reported for the validation-selected configuration; exploratory best-test rows are clearly separated.",
         "",
-        "## Best Improvement Result",
+        "## Validation-Selected Final Test Result",
         "",
         f"- {conclusion}",
-        f"- Best improvement attempt: `{int(best_improvement_row['attempt'])}`",
-        f"- Mode: `{best_improvement_row['mode']}`",
-        f"- Max links per target: `{int(best_improvement_row['max_links'])}`",
-        f"- Seed: `{int(best_improvement_row['seed'])}`",
-        f"- Learning rate: `{best_improvement_row['lr']}`",
-        f"- Hidden dims: `{best_improvement_row['hidden_dims']}`",
-        f"- Rain-weight alpha: `{best_improvement_row['rain_weight_alpha']}`",
-        f"- Matched one-link RMSE: `{best_improvement_row['single_rmse']:.6g}`",
-        f"- Spatial RMSE: `{best_improvement_row['spatial_rmse']:.6g}`",
-        f"- Rainy-only RMSE: `{best_improvement_row['rainy_rmse']:.6g}`",
-        f"- Wet/dry F1: `{best_improvement_row['wet_f1']:.6g}`",
+        f"- Selected attempt: `{int(selected['attempt'])}`",
+        f"- Mode: `{selected['mode']}`",
+        f"- Max links per target: `{int(selected['max_links'])}`",
+        f"- Seed: `{int(selected['seed'])}`",
+        f"- Learning rate: `{selected['lr']}`",
+        f"- Hidden dims: `{selected['hidden_dims']}`",
+        f"- Rain-weight alpha: `{selected['rain_weight_alpha']}`",
+        f"- Validation improvement: `{selected['val_improvement_pct']:.6g}%`",
+        f"- Test matched one-link RMSE: `{selected['single_test_rmse']:.6g}`",
+        f"- Test spatial RMSE: `{selected['spatial_test_rmse']:.6g}`",
+        f"- Test NRMSE: `{selected['test_nrmse']:.6g}`",
+        f"- Test rainy-only RMSE: `{selected['test_rainy_rmse']:.6g}`",
+        f"- Test wet/dry F1: `{selected['test_wet_f1']:.6g}` with `{int(selected['test_wet_true_count'])}` wet positives",
         "",
-        "## Lowest Absolute RMSE Result",
+        "## Exploratory Best-Test Result (Not Used for Final Selection)",
         "",
-        f"- Attempt: `{int(best_rmse['attempt'])}`",
-        f"- Mode: `{best_rmse['mode']}`",
-        f"- Spatial RMSE: `{best_rmse['spatial_rmse']:.6g}`",
-        f"- Improvement vs matched one-link NN: `{best_rmse['improvement_pct']:.6g}%`",
+        f"- Attempt: `{int(exploratory_best_test['attempt'])}`",
+        f"- Mode: `{exploratory_best_test['mode']}`",
+        f"- Test spatial RMSE: `{exploratory_best_test['spatial_test_rmse']:.6g}`",
+        f"- Test improvement vs matched one-link NN: `{exploratory_best_test['test_improvement_pct']:.6g}%`",
         "",
-        "## Top Attempts by Improvement",
+        "## Lowest Absolute Test RMSE Result (Exploratory)",
+        "",
+        f"- Attempt: `{int(best_test_rmse['attempt'])}`",
+        f"- Mode: `{best_test_rmse['mode']}`",
+        f"- Test spatial RMSE: `{best_test_rmse['spatial_test_rmse']:.6g}`",
+        f"- Test improvement vs matched one-link NN: `{best_test_rmse['test_improvement_pct']:.6g}%`",
+        "",
+        "## Top Attempts by Validation Improvement",
         "",
         _dataframe_to_markdown(top),
         "",
         "## Interpretation",
         "",
         "- Each spatial model is compared to a matched one-link baseline trained with the same seed, learning rate, architecture, and rain-weighted loss.",
-        "- This isolates the effect of adding spatial CML links.",
-        "- If the target is not reached, the result is still useful: it shows which data/model changes help and where gains saturate.",
+        "- Validation metrics choose the configuration; the test split is used only for final reporting.",
+        "- Exploratory best-test rows are shown for transparency, but should not be used as headline proof.",
         "",
         "## Visual Artifacts",
         "",
-        "- `best_attempts.png`: top attempts and the 10% improvement target line.",
+        "- `best_attempts.png`: top validation-selected attempts and the 10% improvement target line.",
     ]
     output_path.write_text("\n".join(lines) + "\n")
 
@@ -198,34 +215,47 @@ def main() -> None:
         single_dataset = prepare_spatial_dataset(wide, "single_link", max_links, args.device)
         single_model = train_spatial_model(single_dataset, **shared)
         single_metrics, _ = evaluate_spatial_model("single_link_nn", single_model, single_dataset, args.wet_threshold_mm_h)
-        single_test = test_metric_row(single_metrics)
+        single_val = metric_row(single_metrics, "val")
+        single_test = metric_row(single_metrics, "test")
 
         spatial_dataset = prepare_spatial_dataset(wide, str(config["mode"]), max_links, args.device)
         spatial_model = train_spatial_model(spatial_dataset, **shared)
         spatial_metrics, _ = evaluate_spatial_model(str(config["mode"]), spatial_model, spatial_dataset, args.wet_threshold_mm_h)
-        spatial_test = test_metric_row(spatial_metrics)
+        spatial_val = metric_row(spatial_metrics, "val")
+        spatial_test = metric_row(spatial_metrics, "test")
 
-        single_rmse = float(single_test["rmse"])
-        spatial_rmse = float(spatial_test["rmse"])
+        single_val_rmse = float(single_val["rmse"])
+        spatial_val_rmse = float(spatial_val["rmse"])
+        single_test_rmse = float(single_test["rmse"])
+        spatial_test_rmse = float(spatial_test["rmse"])
         rows.append(
             {
                 "attempt": attempt,
                 **config,
                 "power_a": power_a,
-                "single_rmse": single_rmse,
-                "spatial_rmse": spatial_rmse,
-                "improvement_pct": (single_rmse - spatial_rmse) / single_rmse * 100.0,
-                "rainy_rmse": float(spatial_test["rainy_rmse"]),
-                "mae": float(spatial_test["mae"]),
-                "wet_f1": float(spatial_test["wet_f1"]),
-                "wet_accuracy": float(spatial_test["wet_accuracy"]),
+                "single_val_rmse": single_val_rmse,
+                "spatial_val_rmse": spatial_val_rmse,
+                "val_improvement_pct": (single_val_rmse - spatial_val_rmse) / single_val_rmse * 100.0,
+                "single_test_rmse": single_test_rmse,
+                "spatial_test_rmse": spatial_test_rmse,
+                "test_improvement_pct": (single_test_rmse - spatial_test_rmse) / single_test_rmse * 100.0,
+                "single_rmse": single_test_rmse,
+                "spatial_rmse": spatial_test_rmse,
+                "improvement_pct": (single_val_rmse - spatial_val_rmse) / single_val_rmse * 100.0,
+                "test_nrmse": float(spatial_test["nrmse"]),
+                "test_rainy_rmse": float(spatial_test["rainy_rmse"]),
+                "test_mae": float(spatial_test["mae"]),
+                "test_wet_f1": float(spatial_test["wet_f1"]),
+                "test_wet_accuracy": float(spatial_test["wet_accuracy"]),
+                "test_wet_true_count": int(spatial_test["wet_true_count"]),
             }
         )
         if attempt % 10 == 0 or attempt == len(configs):
-            current_best = max(rows, key=lambda row: row["improvement_pct"])
+            current_best = max(rows, key=lambda row: row["val_improvement_pct"])
             print(
-                f"Attempt {attempt}/{len(configs)}: best improvement "
-                f"{current_best['improvement_pct']:.2f}% (spatial RMSE {current_best['spatial_rmse']:.4f})"
+                f"Attempt {attempt}/{len(configs)}: best validation improvement "
+                f"{current_best['val_improvement_pct']:.2f}% "
+                f"(final-test RMSE {current_best['spatial_test_rmse']:.4f})"
             )
 
     results = pd.DataFrame(rows)
@@ -234,8 +264,8 @@ def main() -> None:
     plot_best_attempts(results, args.output_dir / "best_attempts.png")
     write_report(args.output_dir / "spatial_sweep_report.md", results, args)
 
-    best = results.sort_values("improvement_pct", ascending=False).iloc[0]
-    print("\nBest sweep result")
+    best = results.sort_values("val_improvement_pct", ascending=False).iloc[0]
+    print("\nValidation-selected sweep result")
     print("-" * 72)
     print(best.to_string())
     print(f"\nSaved sweep report: {args.output_dir / 'spatial_sweep_report.md'}")

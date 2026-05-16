@@ -120,7 +120,6 @@ def add_time_splits(
     ] = "val"
     return result
 
-
 def summarize_table(table: pd.DataFrame, wet_threshold_mm_h: float) -> dict[str, object]:
     """Compute Phase 2 data-quality summary values."""
     required = [
@@ -333,7 +332,6 @@ def write_report(
         [
             "",
             "## Notes",
-            "- Splits are chronological to avoid storm leakage.",
             "- Correlation is diagnostic only; low correlation is not a blocker by itself.",
             "- PyNNcml OpenMRG uses stable 15-minute alignment by default.",
         ]
@@ -437,7 +435,15 @@ def main() -> None:
     split_summary_frame.to_csv(split_summary_path, index=False)
 
     report_path = args.output_dir / "phase2_validation_report.md"
-    write_report(report_path, args.input, summary, link_summary, split_summary_frame, issues, warnings)
+    write_report(
+        report_path,
+        args.input,
+        summary,
+        link_summary,
+        split_summary_frame,
+        issues,
+        warnings,
+    )
 
     plot_timeseries(table, args.output_dir / "rain_attenuation_timeseries.png")
     plot_scatter(table, args.output_dir / "rain_attenuation_scatter.png")

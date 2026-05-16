@@ -50,8 +50,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=500)
     parser.add_argument("--patience", type=int, default=100)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--hidden-dims", default="64,64", help="Comma-separated hidden layer sizes")
     parser.add_argument("--power-b", type=float, default=0.8)
     parser.add_argument("--rain-weight-alpha", type=float, default=2.0)
+    parser.add_argument(
+        "--comparison-mode",
+        choices=["spatial", "spatial_physics"],
+        default="spatial_physics",
+        help="Fixed candidate mode to compare against single_link_nn.",
+    )
+    parser.add_argument(
+        "--config-from-sweep",
+        type=Path,
+        default=None,
+        help="Optional spatial_sweep_results.csv. Loads the best validation-improvement config.",
+    )
     parser.add_argument("--wet-threshold-mm-h", type=float, default=0.1)
     parser.add_argument("--target-noise-std", type=float, default=0.0)
     parser.add_argument("--device", default="cpu")
@@ -64,6 +77,26 @@ def _parse_float_list(raw: str) -> list[float]:
 
 def _parse_int_list(raw: str) -> list[int]:
     return [int(p.strip()) for p in raw.split(",") if p.strip()]
+
+
+def _parse_hidden_dims(raw: str) -> list[int]:
+    return [int(p.strip()) for p in raw.replace("-", ",").split(",") if p.strip()]
+
+
+def apply_sweep_config(args: argparse.Namespace) -> list[int]:
+    """Load the best validation-selected sweep config when requested."""
+    hidden_dims = _parse_hidden_dims(args.hidden_dims)
+    if args.config_from_sweep is None:
+        return hidden_dims
+
+    sweep = pd.read_csv(args.config_from_sweep)
+    metric = "val_improvement_pct" if "val_improvement_pct" in sweep.columns else "improvement_pct"
+    best = sweep.sort_values(metric, ascending=False).iloc[0]
+    args.max_links_per_target = int(best["max_links"])
+    args.lr = float(best["lr"])
+    args.rain_weight_alpha = float(best["rain_weight_alpha"])
+    args.comparison_mode = str(best["mode"])
+    return _parse_hidden_dims(str(best["hidden_dims"]))
 
 
 def limit_spatial_training(
@@ -116,12 +149,12 @@ def _plot_rmse(summary: pd.DataFrame, output_path: Path) -> None:
     plt.close(fig)
 
 
-def _plot_improvement(summary: pd.DataFrame, output_path: Path) -> None:
+def _plot_improvement(summary: pd.DataFrame, output_path: Path, comparison_model: str) -> None:
     test = summary[summary["split"] == "test"].copy()
     single = test[test["model"] == "single_link_nn"].groupby("train_fraction")["rmse"].mean()
-    spatial = test[test["model"] == "spatial_physics_nn"].groupby("train_fraction")["rmse"].mean()
-    merged = pd.DataFrame({"single": single, "spatial": spatial}).dropna()
-    merged["improvement_pct"] = (merged["single"] - merged["spatial"]) / merged["single"] * 100.0
+    candidate = test[test["model"] == comparison_model].groupby("train_fraction")["rmse"].mean()
+    merged = pd.DataFrame({"single": single, "candidate": candidate}).dropna()
+    merged["improvement_pct"] = (merged["single"] - merged["candidate"]) / merged["single"] * 100.0
 
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.bar([f"{f:.0%}" for f in merged.index], merged["improvement_pct"])
@@ -129,7 +162,7 @@ def _plot_improvement(summary: pd.DataFrame, output_path: Path) -> None:
     ax.axhline(0.0, color="black", linewidth=0.8)
     ax.set_xlabel("Training fraction kept")
     ax.set_ylabel("RMSE improvement over single-link (%)")
-    ax.set_title("Spatial+Physics Improvement vs Data Availability")
+    ax.set_title(f"{comparison_model} Improvement vs Data Availability")
     ax.grid(True, axis="y", alpha=0.25)
     ax.legend()
     fig.tight_layout()
@@ -160,6 +193,7 @@ def _write_report(
     args: argparse.Namespace,
 ) -> None:
     test = summary[summary["split"] == "test"].copy()
+    comparison_model = f"{args.comparison_mode}_nn"
     pivot = (
         test.groupby(["train_fraction", "model"])["rmse"]
         .mean()
@@ -168,15 +202,29 @@ def _write_report(
         .reset_index()
         .sort_values("train_fraction", ascending=False)
     )
-    if "single_link_nn" in pivot.columns and "spatial_physics_nn" in pivot.columns:
-        pivot["spatial_improvement_pct"] = (
-            (pivot["single_link_nn"] - pivot["spatial_physics_nn"])
+    nrmse_pivot = (
+        test.groupby(["train_fraction", "model"])["nrmse"]
+        .mean()
+        .reset_index()
+        .pivot(index="train_fraction", columns="model", values="nrmse")
+        .reset_index()
+        .sort_values("train_fraction", ascending=False)
+    )
+    wet_counts = (
+        test.groupby("train_fraction")["wet_true_count"]
+        .mean()
+        .reset_index(name="mean_test_wet_positives")
+        .sort_values("train_fraction", ascending=False)
+    )
+    if "single_link_nn" in pivot.columns and comparison_model in pivot.columns:
+        pivot["candidate_improvement_pct"] = (
+            (pivot["single_link_nn"] - pivot[comparison_model])
             / pivot["single_link_nn"]
             * 100.0
         )
-        wins = int((pivot["spatial_improvement_pct"] > 0).sum())
-        above_10 = int((pivot["spatial_improvement_pct"] >= 10.0).sum())
-        best_improvement = float(pivot["spatial_improvement_pct"].max())
+        wins = int((pivot["candidate_improvement_pct"] > 0).sum())
+        above_10 = int((pivot["candidate_improvement_pct"] >= 10.0).sum())
+        best_improvement = float(pivot["candidate_improvement_pct"].max())
     else:
         wins = 0
         above_10 = 0
@@ -184,17 +232,17 @@ def _write_report(
 
     if above_10 > 0:
         conclusion = (
-            f"Spatial+physics beats single-link in {wins}/{len(pivot)} data fractions, "
+            f"{comparison_model} beats single-link in {wins}/{len(pivot)} data fractions, "
             f"with {above_10} reaching the 10% improvement target. "
             f"Best improvement: {best_improvement:.3g}%."
         )
     elif wins > 0:
         conclusion = (
-            f"Spatial+physics beats single-link in {wins}/{len(pivot)} data fractions, "
+            f"{comparison_model} beats single-link in {wins}/{len(pivot)} data fractions, "
             f"but none reach 10%. Best improvement: {best_improvement:.3g}%."
         )
     else:
-        conclusion = "Spatial+physics does not consistently beat single-link under sparse data."
+        conclusion = f"{comparison_model} does not consistently beat single-link under sparse data."
 
     lines = [
         "# Spatial Robustness / Data-Efficiency Report",
@@ -205,10 +253,21 @@ def _write_report(
         f"Target noise std: `{args.target_noise_std}`",
         f"Max links per target: `{args.max_links_per_target}`",
         f"Rain weight alpha: `{args.rain_weight_alpha}`",
+        f"Comparison mode: `{args.comparison_mode}`",
+        f"Hidden dims: `{args.hidden_dims}`",
+        f"Config from sweep: `{args.config_from_sweep}`",
         "",
         "## Test RMSE by Training Fraction",
         "",
         _dataframe_to_markdown(pivot),
+        "",
+        "## Test NRMSE by Training Fraction",
+        "",
+        _dataframe_to_markdown(nrmse_pivot),
+        "",
+        "## Wet Positive Counts",
+        "",
+        _dataframe_to_markdown(wet_counts),
         "",
         "## Result Summary",
         "",
@@ -216,9 +275,9 @@ def _write_report(
         "",
         "## Interpretation",
         "",
-        "- Each spatial+physics model is compared to a matched single-link baseline trained with the same seed, lr, and data fraction.",
+        f"- `{comparison_model}` is compared to a matched single-link baseline trained with the same seed, lr, architecture, and data fraction.",
         "- Training rows are randomly removed; validation and test stay clean.",
-        "- Positive `spatial_improvement_pct` means spatial+physics was better than single-link at that data fraction.",
+        "- Positive `candidate_improvement_pct` means the fixed candidate was better than single-link at that data fraction.",
         "- This tests whether spatial CML context provides a data-efficiency advantage, directly addressing Metric 2.",
         "",
         "## Visual Artifacts",
@@ -235,6 +294,9 @@ def main() -> None:
 
     fractions = _parse_float_list(args.train_fractions)
     seeds = _parse_int_list(args.seeds)
+    hidden_dims = apply_sweep_config(args)
+    args.hidden_dims = ",".join(str(v) for v in hidden_dims)
+    comparison_model = f"{args.comparison_mode}_nn"
 
     wide, power_a = build_spatial_wide_table(args.input, args.power_b, args.max_links_per_target)
 
@@ -261,7 +323,7 @@ def main() -> None:
                 "seed": seed,
                 "device": args.device,
                 "patience": args.patience,
-                "hidden_dims": [64, 64],
+                "hidden_dims": hidden_dims,
                 "rain_weight_alpha": args.rain_weight_alpha,
                 "wet_threshold_mm_h": args.wet_threshold_mm_h,
             }
@@ -280,17 +342,17 @@ def main() -> None:
                     rows.append(row)
 
             single_test = [r for r in rows if r["model"] == "single_link_nn" and r["split"] == "test" and r["train_fraction"] == fraction and r["seed"] == seed]
-            spatial_test = [r for r in rows if r["model"] == "spatial_physics_nn" and r["split"] == "test" and r["train_fraction"] == fraction and r["seed"] == seed]
-            if single_test and spatial_test:
+            candidate_test = [r for r in rows if r["model"] == comparison_model and r["split"] == "test" and r["train_fraction"] == fraction and r["seed"] == seed]
+            if single_test and candidate_test:
                 s_rmse = float(single_test[-1]["rmse"])
-                sp_rmse = float(spatial_test[-1]["rmse"])
-                imp = (s_rmse - sp_rmse) / s_rmse * 100.0
-                print(f"  seed={seed} frac={fraction:.0%}: single={s_rmse:.4f} spatial_physics={sp_rmse:.4f} improvement={imp:.1f}%")
+                c_rmse = float(candidate_test[-1]["rmse"])
+                imp = (s_rmse - c_rmse) / s_rmse * 100.0
+                print(f"  seed={seed} frac={fraction:.0%}: single={s_rmse:.4f} {comparison_model}={c_rmse:.4f} improvement={imp:.1f}%")
 
     summary = pd.DataFrame(rows)
     summary.to_csv(args.output_dir / "spatial_robustness_metrics.csv", index=False)
     _plot_rmse(summary, args.output_dir / "rmse_vs_train_fraction.png")
-    _plot_improvement(summary, args.output_dir / "improvement_vs_fraction.png")
+    _plot_improvement(summary, args.output_dir / "improvement_vs_fraction.png", comparison_model)
     _write_report(args.output_dir / "spatial_robustness_report.md", summary, args)
 
     test = summary[summary["split"] == "test"]

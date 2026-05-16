@@ -334,7 +334,21 @@ def write_spatial_report(
         "",
         "## Test Metrics",
         "",
-        _dataframe_to_markdown(test[["model", "rmse", "rainy_rmse", "mae", "wet_f1", "wet_accuracy"]]),
+        _dataframe_to_markdown(
+            test[
+                [
+                    "model",
+                    "rmse",
+                    "nrmse",
+                    "rainy_rmse",
+                    "mae",
+                    "wet_f1",
+                    "wet_true_count",
+                    "wet_pred_count",
+                    "wet_accuracy",
+                ]
+            ]
+        ),
         "",
         "## Result Summary",
         "",
@@ -388,7 +402,7 @@ def main() -> None:
     print("\nSpatial test metrics")
     print("-" * 72)
     print(
-        test[["model", "rmse", "rainy_rmse", "mae", "wet_f1", "wet_accuracy"]]
+        test[["model", "rmse", "nrmse", "rainy_rmse", "mae", "wet_f1", "wet_true_count", "wet_accuracy"]]
         .to_string(index=False, float_format=lambda value: f"{value:.4f}")
     )
     print(f"\nSaved spatial report: {output_dir / 'spatial_report.md'}")

@@ -158,6 +158,14 @@ def _write_report(output_path: Path, summary: pd.DataFrame, args: argparse.Names
         .reset_index()
         .sort_values("train_fraction", ascending=False)
     )
+    nrmse_pivot = (
+        test.groupby(["train_fraction", "model"])["nrmse"]
+        .mean()
+        .reset_index()
+        .pivot(index="train_fraction", columns="model", values="nrmse")
+        .reset_index()
+        .sort_values("train_fraction", ascending=False)
+    )
     if "nn" in pivot.columns and "pinn" in pivot.columns:
         pivot["pinn_rmse_delta_vs_nn"] = pivot["pinn"] - pivot["nn"]
         wins = int((pivot["pinn_rmse_delta_vs_nn"] < 0).sum())
@@ -193,6 +201,10 @@ def _write_report(output_path: Path, summary: pd.DataFrame, args: argparse.Names
         "## Test RMSE by Training Fraction",
         "",
         _dataframe_to_markdown(pivot),
+        "",
+        "## Test NRMSE by Training Fraction",
+        "",
+        _dataframe_to_markdown(nrmse_pivot),
         "",
         "## Result Summary",
         "",
